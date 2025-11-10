@@ -4,13 +4,14 @@ sys.path.append('..')
 from src.agents.triage_agent import TriageAgent
 from src.agents.kb_agent import KnowledgeBaseAgent
 from src.agents.response_agent import ResponseAgent
+from src.conversation_manager import ConversationManager
 from config.config import Config
 import time
 
 
 class CustomerServiceOrchestrator:
     """
-    Orchestrator: Coordinates all agents to process customer queries
+    Orchestrator: Coordinates all agents to process customer queries in conversational mode
     """
     
     def __init__(self):
@@ -21,60 +22,77 @@ class CustomerServiceOrchestrator:
         self.response_agent = ResponseAgent()
         print("✓ All agents initialized\n")
     
-    def process_query(self, customer_query, verbose=True):
+    def process_message(self, customer_message, conversation, verbose=True):
         """
-        Process a customer query through the complete pipeline
+        Process a single message in an ongoing conversation
         
         Args:
-            customer_query: Customer's question/complaint
+            customer_message: Customer's current message
+            conversation: ConversationManager instance
             verbose: Print step-by-step progress
         
         Returns:
-            Dict with complete results
+            Dict with bot response and metadata
         """
         start_time = time.time()
         
         if verbose:
             print("=" * 70)
-            print("PROCESSING CUSTOMER QUERY")
+            print(f"PROCESSING MESSAGE (Conversation: {conversation.conversation_id})")
             print("=" * 70)
-            print(f"Query: {customer_query}\n")
+            print(f"Customer: {customer_message}\n")
         
-        # Step 1: Triage and Classification
-        if verbose:
-            print("STEP 1: Triage Agent - Classifying query...")
+        # Add customer message to conversation
+        conversation.add_message('customer', customer_message)
         
-        triage_result = self.triage_agent.classify(customer_query)
-        
-        if verbose:
-            print(f"  ✓ Category: {triage_result['category']}")
-            print(f"  ✓ Urgency: {triage_result['urgency']}")
-            print(f"  ✓ Manuscript ID: {triage_result.get('manuscript_id', 'N/A')}")
-            print(f"  ✓ Summary: {triage_result['issue_summary']}\n")
+        # Step 1: Triage (only if context not already established)
+        if not conversation.context['category'] or conversation.context['urgency'] == 'low':
+            if verbose:
+                print("STEP 1: Triage Agent - Analyzing message...")
+            
+            triage_result = self.triage_agent.classify(customer_message)
+            
+            # Update conversation context
+            conversation.update_context(
+                manuscript_id=triage_result.get('manuscript_id') or conversation.context['manuscript_id'],
+                category=triage_result['category'],
+                urgency=triage_result['urgency']
+            )
+            
+            if verbose:
+                print(f"  ✓ Category: {triage_result['category']}")
+                print(f"  ✓ Urgency: {triage_result['urgency']}")
+                print(f"  ✓ Manuscript ID: {conversation.context['manuscript_id']}\n")
+        else:
+            if verbose:
+                print("STEP 1: Using existing conversation context...\n")
+            triage_result = {
+                'category': conversation.context['category'],
+                'urgency': conversation.context['urgency'],
+                'manuscript_id': conversation.context['manuscript_id'],
+                'issue_summary': 'Continuing conversation'
+            }
         
         # Step 2: Knowledge Base Search
         if verbose:
             print("STEP 2: Knowledge Base Agent - Searching similar cases...")
         
         kb_results = self.kb_agent.search(
-            customer_query,
-            category=triage_result['category'],
+            customer_message,
+            category=conversation.context['category'],
             top_k=3
         )
         
         if verbose:
-            print(f"  ✓ Found {len(kb_results)} similar cases")
-            if kb_results:
-                for idx, case in enumerate(kb_results, 1):
-                    print(f"    {idx}. {case['id']} (relevance: {case['relevance_score']:.2f})")
-            print()
+            print(f"  ✓ Found {len(kb_results)} similar cases\n")
         
-        # Step 3: Generate Response
+        # Step 3: Generate Conversational Response
         if verbose:
-            print("STEP 3: Response Agent - Generating personalized response...")
+            print("STEP 3: Response Agent - Generating response...")
         
-        response, confidence, should_escalate = self.response_agent.generate_with_confidence(
-            customer_query,
+        bot_response, confidence, should_escalate = self._generate_conversational_response(
+            customer_message,
+            conversation,
             triage_result,
             kb_results
         )
@@ -82,67 +100,141 @@ class CustomerServiceOrchestrator:
         if verbose:
             print(f"  ✓ Response generated")
             print(f"  ✓ Confidence: {confidence:.2f}")
-            print(f"  ✓ Escalation needed: {should_escalate}\n")
+            print(f"  ✓ Should escalate: {should_escalate}\n")
         
-        # Calculate total processing time
+        # Add bot response to conversation
+        conversation.add_message('bot', bot_response, metadata={
+            'confidence': confidence,
+            'triage': triage_result,
+            'similar_cases_count': len(kb_results)
+        })
+        
+        # Check for escalation
+        if should_escalate or conversation.should_escalate():
+            if not conversation.context['escalated']:
+                escalation_reason = self._determine_escalation_reason(
+                    confidence, 
+                    triage_result, 
+                    conversation
+                )
+                conversation.mark_escalated(escalation_reason)
+                if verbose:
+                    print(f"  ⚠️  ESCALATED: {escalation_reason}\n")
+        
+        # Calculate processing time
         processing_time = time.time() - start_time
         
-        # Compile complete result
+        # Compile result
         result = {
-            "query": customer_query,
-            "triage": triage_result,
-            "similar_cases": kb_results,
-            "response": response,
+            "customer_message": customer_message,
+            "bot_response": bot_response,
+            "conversation_id": conversation.conversation_id,
             "confidence_score": confidence,
-            "should_escalate": should_escalate,
-            "processing_time_seconds": round(processing_time, 2)
+            "should_escalate": conversation.context['escalated'],
+            "escalation_reason": conversation.context['escalation_reason'],
+            "context": conversation.context,
+            "processing_time_seconds": round(processing_time, 2),
+            "message_count": len(conversation.messages)
         }
         
         if verbose:
             print("=" * 70)
-            print("GENERATED RESPONSE")
+            print("BOT RESPONSE")
             print("=" * 70)
-            print(response)
+            print(bot_response)
             print("=" * 70)
-            print(f"\n⏱️  Total processing time: {processing_time:.2f} seconds")
-            if should_escalate:
-                print("⚠️  RECOMMENDATION: Escalate to human agent")
+            print(f"\n⏱️  Processing time: {processing_time:.2f} seconds")
+            if conversation.context['escalated']:
+                print(f"⚠️  ESCALATED: {conversation.context['escalation_reason']}")
             print()
         
         return result
     
-    def batch_process(self, queries):
+    def _generate_conversational_response(self, customer_message, conversation, 
+                                         triage_result, kb_results):
         """
-        Process multiple queries
+        Generate response with conversation context
         
         Args:
-            queries: List of customer queries
+            customer_message: Current customer message
+            conversation: ConversationManager instance
+            triage_result: Triage classification
+            kb_results: Similar cases from KB
         
         Returns:
-            List of result dicts
+            Tuple of (response, confidence, should_escalate)
         """
-        results = []
+        # Build enhanced context for response generation
+        context_string = conversation.get_context_string()
         
-        print(f"\nProcessing {len(queries)} queries...\n")
+        # Enhance the customer query with conversation context
+        enhanced_query = f"""
+Conversation Context:
+{context_string}
+
+Current Customer Message: {customer_message}
+
+Generate a response that:
+1. Acknowledges the conversation history
+2. Directly addresses the current question
+3. Maintains consistent information across the conversation
+4. Uses the customer's manuscript ID if mentioned before
+"""
         
-        for idx, query in enumerate(queries, 1):
-            print(f"\n{'='*70}")
-            print(f"Query {idx}/{len(queries)}")
-            print(f"{'='*70}")
-            
-            result = self.process_query(query, verbose=True)
-            results.append(result)
+        response, confidence, should_escalate = self.response_agent.generate_with_confidence(
+            enhanced_query,
+            triage_result,
+            kb_results
+        )
         
-        # Summary statistics
-        print("\n" + "="*70)
-        print("BATCH PROCESSING SUMMARY")
-        print("="*70)
-        print(f"Total queries processed: {len(results)}")
-        print(f"Average confidence: {sum(r['confidence_score'] for r in results)/len(results):.2f}")
-        print(f"Escalations needed: {sum(1 for r in results if r['should_escalate'])}")
-        print(f"Total time: {sum(r['processing_time_seconds'] for r in results):.2f}s")
+        return response, confidence, should_escalate
+    
+    def _determine_escalation_reason(self, confidence, triage_result, conversation):
+        """
+        Determine specific reason for escalation
         
-        return results
+        Args:
+            confidence: Response confidence score
+            triage_result: Triage classification
+            conversation: ConversationManager instance
+        
+        Returns:
+            String describing escalation reason
+        """
+        reasons = []
+        
+        if confidence < Config.ESCALATION_THRESHOLD:
+            reasons.append(f"Low confidence ({confidence:.0%})")
+        
+        if triage_result['urgency'] == 'high':
+            reasons.append("High urgency issue")
+        
+        if len(conversation.messages) > 6:
+            reasons.append("Extended conversation (>3 exchanges)")
+        
+        # Check for frustration keywords
+        recent_customer_messages = [
+            msg['content'] for msg in conversation.get_conversation_history(3)
+            if msg['role'] == 'customer'
+        ]
+        frustrated_keywords = ['unacceptable', 'ridiculous', 'angry', 'complaint', 
+                              'manager', 'escalate', 'disappointed']
+        
+        for msg in recent_customer_messages:
+            if any(keyword in msg.lower() for keyword in frustrated_keywords):
+                reasons.append("Customer frustration detected")
+                break
+        
+        return " | ".join(reasons) if reasons else "Agent recommendation"
+    
+    def create_conversation(self):
+        """
+        Create a new conversation instance
+        
+        Returns:
+            ConversationManager instance
+        """
+        return ConversationManager()
     
     def get_system_stats(self):
         """
@@ -165,14 +257,26 @@ class CustomerServiceOrchestrator:
 if __name__ == "__main__":
     orchestrator = CustomerServiceOrchestrator()
     
-    # Test single query
-    test_query = "I submitted my manuscript MS-2024-1234 three weeks ago. Can you tell me the status?"
+    # Create a conversation
+    conversation = orchestrator.create_conversation()
     
-    result = orchestrator.process_query(test_query)
+    # Simulate multi-turn conversation
+    messages = [
+        "I submitted my manuscript MS-2024-1234 three weeks ago. What's the status?",
+        "How much longer will it take?",
+        "This is taking too long! I need an answer now!"
+    ]
     
-    print("\n" + "="*70)
-    print("RESULT SUMMARY")
-    print("="*70)
-    print(f"Category: {result['triage']['category']}")
-    print(f"Confidence: {result['confidence_score']:.2f}")
-    print(f"Escalate: {result['should_escalate']}")
+    print("Testing multi-turn conversation...\n")
+    
+    for msg in messages:
+        result = orchestrator.process_message(msg, conversation)
+        print("\n" + "="*70 + "\n")
+    
+    # Show escalation summary
+    if conversation.context['escalated']:
+        print("\n" + "="*70)
+        print("ESCALATION SUMMARY FOR HUMAN AGENT")
+        print("="*70)
+        import json
+        print(json.dumps(conversation.get_escalation_summary(), indent=2))
