@@ -19,6 +19,10 @@ class Config:
     DATA_DIR = "data"
     SYNTHETIC_DATA_PATH = os.path.join(DATA_DIR, "synthetic_data.csv")
     
+    # Thresholds
+    ESCALATION_THRESHOLD = 0.5  # Below this confidence, escalate to human
+    HIGH_CONFIDENCE_THRESHOLD = 0.8
+    
     # Agent Categories
     CATEGORIES = [
         "status_inquiry",
@@ -40,3 +44,6 @@ class Config:
             )
         
         os.makedirs(Config.DATA_DIR, exist_ok=True)
+
+# Validate configuration on import
+Config.validate()
