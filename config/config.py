@@ -10,6 +10,9 @@ class Config:
     # Claude API Configuration
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
     CLAUDE_MODEL = "claude-sonnet-4-20250514"
+    # OpenAI Configuration (for embeddings)
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    EMBEDDING_MODEL = "text-embedding-3-small"  # Fast and cost-effective
     
     # Agent Configuration
     MAX_TOKENS = 2000
