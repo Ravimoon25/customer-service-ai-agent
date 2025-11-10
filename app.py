@@ -89,11 +89,12 @@ with st.sidebar:
     if st.session_state.active_conversations:
         for conv_id, conv in st.session_state.active_conversations.items():
             escalation_icon = "⚠️" if conv.context['escalated'] else ""
+            urgency = conv.context.get('urgency')
             urgency_color = {
                 'low': '🟢',
                 'medium': '🟡', 
                 'high': '🔴'
-            }.get(conv.context.get('urgency'), '')
+            }.get(urgency, '') if urgency else ''
             
             col1, col2 = st.columns([3, 1])
             with col1:
@@ -166,9 +167,12 @@ with tab1:
         if conversation.context.get('category'):
             st.caption(f"🏷️ {conversation.context['category'].replace('_', ' ').title()}")
     with col4:
-        urgency = conversation.context.get('urgency', 'unknown')
-        urgency_emoji = {'low': '🟢', 'medium': '🟡', 'high': '🔴'}.get(urgency, '⚪')
-        st.caption(f"{urgency_emoji} {urgency.title()}")
+        urgency = conversation.context.get('urgency')
+        if urgency:
+            urgency_emoji = {'low': '🟢', 'medium': '🟡', 'high': '🔴'}.get(urgency, '⚪')
+            st.caption(f"{urgency_emoji} {urgency.title()}")
+        else:
+            st.caption("⚪ Unknown")
     
     # Escalation banner
     if conversation.context['escalated']:
