@@ -1,295 +1,353 @@
 import streamlit as st
 import sys
 import os
+from datetime import datetime
 
 # Add src to path
 sys.path.append(os.path.dirname(__file__))
 
 from src.orchestrator import CustomerServiceOrchestrator
 from config.config import Config
-import pandas as pd
 
 # Page configuration
 st.set_page_config(
-    page_title="AI Customer Service Agent",
-    page_icon="🤖",
+    page_title="AI Customer Service Chatbot",
+    page_icon="💬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS for chat interface
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        padding: 1rem 0;
-    }
-    .stAlert {
-        margin-top: 1rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
+    .chat-message {
         padding: 1rem;
         border-radius: 0.5rem;
-        margin: 0.5rem 0;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+    .customer-message {
+        background-color: #e3f2fd;
+        margin-left: 2rem;
+    }
+    .bot-message {
+        background-color: #f5f5f5;
+        margin-right: 2rem;
+    }
+    .message-header {
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    .customer-header {
+        color: #1976d2;
+    }
+    .bot-header {
+        color: #424242;
+    }
+    .escalation-banner {
+        background-color: #fff3cd;
+        border-left: 4px solid #ff9800;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.5rem;
+    }
+    .metric-card {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+    }
+    .stTextInput > div > div > input {
+        border-radius: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
 if 'orchestrator' not in st.session_state:
-    with st.spinner("Initializing AI agents..."):
+    with st.spinner("🤖 Initializing AI agents..."):
         st.session_state.orchestrator = CustomerServiceOrchestrator()
-        st.session_state.history = []
+        st.session_state.active_conversations = {}
+        st.session_state.current_conv_id = None
 
-# Title
-st.markdown('<p class="main-header">🤖 AI Customer Service Agent System</p>', unsafe_allow_html=True)
-st.markdown("### Multi-Agent System for Academic Publishing Support")
-
-# Sidebar
+# Sidebar - Agent Dashboard
 with st.sidebar:
-    st.header("📊 System Information")
+    st.header("🎛️ Agent Dashboard")
     
-    # Get system stats
+    # System stats
     stats = st.session_state.orchestrator.get_system_stats()
-    
-    st.metric("Knowledge Base Cases", stats['knowledge_base']['total_cases'])
-    st.metric("Categories", len(stats['categories']))
-    st.metric("Model", "Claude Sonnet 4.5")
+    st.metric("Knowledge Base", f"{stats['knowledge_base']['total_cases']} cases")
+    st.metric("Active Chats", len(st.session_state.active_conversations))
     
     st.divider()
     
-    st.subheader("📁 Categories")
-    for cat in stats['categories']:
-        st.text(f"• {cat.replace('_', ' ').title()}")
+    # Active conversations list
+    st.subheader("💬 Active Conversations")
     
-    st.divider()
-    
-    st.subheader("⚙️ Settings")
-    show_details = st.checkbox("Show detailed processing", value=True)
-    show_kb_results = st.checkbox("Show similar cases", value=True)
-    
-    st.divider()
-    
-    if st.button("🗑️ Clear History"):
-        st.session_state.history = []
-        st.rerun()
-
-# Main area - tabs
-tab1, tab2, tab3 = st.tabs(["💬 Query Processor", "📜 Query History", "ℹ️ About"])
-
-with tab1:
-    st.subheader("Enter Customer Query")
-    
-    # Example queries
-    example_queries = [
-        "I submitted my manuscript MS-2024-1234 three weeks ago. What's the status?",
-        "My manuscript MS-2024-5678 has been in review for 10 weeks. This is taking too long!",
-        "I received a revise and resubmit decision for MS-2024-9012. How long do I have?",
-        "I want to withdraw my manuscript MS-2024-3456 and submit it elsewhere.",
-        "Can I get an extension for submitting revisions? Manuscript MS-2024-7890."
-    ]
-    
-    selected_example = st.selectbox(
-        "Or select an example query:",
-        [""] + example_queries,
-        index=0
-    )
-    
-    # Query input
-    if selected_example:
-        query_input = st.text_area(
-            "Customer Query:",
-            value=selected_example,
-            height=100,
-            key="query_input"
-        )
-    else:
-        query_input = st.text_area(
-            "Customer Query:",
-            placeholder="Enter customer question here...",
-            height=100,
-            key="query_input"
-        )
-    
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col1:
-        process_button = st.button("🚀 Process Query", type="primary", use_container_width=True)
-    
-    if process_button and query_input.strip():
-        with st.spinner("Processing query through AI agents..."):
-            # Process the query
-            result = st.session_state.orchestrator.process_query(
-                query_input,
-                verbose=False
-            )
+    if st.session_state.active_conversations:
+        for conv_id, conv in st.session_state.active_conversations.items():
+            escalation_icon = "⚠️" if conv.context['escalated'] else ""
+            urgency_color = {
+                'low': '🟢',
+                'medium': '🟡', 
+                'high': '🔴'
+            }.get(conv.context.get('urgency'), '')
             
-            # Add to history
-            st.session_state.history.append(result)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if st.button(
+                    f"{escalation_icon} {urgency_color} {conv_id}", 
+                    key=f"conv_{conv_id}",
+                    use_container_width=True
+                ):
+                    st.session_state.current_conv_id = conv_id
+                    st.rerun()
+            with col2:
+                st.caption(f"{len(conv.messages)//2}msg")
         
-        st.success("✅ Query processed successfully!")
-        
-        # Display results
         st.divider()
         
-        # Metrics row
+        # Show escalated conversations
+        escalated = [c for c in st.session_state.active_conversations.values() if c.context['escalated']]
+        if escalated:
+            st.warning(f"⚠️ {len(escalated)} chat(s) need attention")
+    else:
+        st.info("No active conversations")
+    
+    st.divider()
+    
+    # New conversation button
+    if st.button("➕ New Conversation", type="primary", use_container_width=True):
+        new_conv = st.session_state.orchestrator.create_conversation()
+        st.session_state.active_conversations[new_conv.conversation_id] = new_conv
+        st.session_state.current_conv_id = new_conv.conversation_id
+        st.rerun()
+    
+    st.divider()
+    
+    # Settings
+    st.subheader("⚙️ Settings")
+    show_metadata = st.checkbox("Show message metadata", value=False)
+    auto_scroll = st.checkbox("Auto-scroll to bottom", value=True)
+
+# Main area
+st.title("💬 AI Customer Service Chatbot")
+st.caption("Multi-agent system for academic publishing support")
+
+# Create tabs
+tab1, tab2 = st.tabs(["🗨️ Chat Interface", "📊 Analytics"])
+
+with tab1:
+    # Get current conversation
+    if st.session_state.current_conv_id:
+        conversation = st.session_state.active_conversations[st.session_state.current_conv_id]
+    else:
+        # Create first conversation if none exists
+        if not st.session_state.active_conversations:
+            new_conv = st.session_state.orchestrator.create_conversation()
+            st.session_state.active_conversations[new_conv.conversation_id] = new_conv
+            st.session_state.current_conv_id = new_conv.conversation_id
+            conversation = new_conv
+        else:
+            # Use first available conversation
+            st.session_state.current_conv_id = list(st.session_state.active_conversations.keys())[0]
+            conversation = st.session_state.active_conversations[st.session_state.current_conv_id]
+    
+    # Conversation header
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    with col1:
+        st.subheader(f"Conversation: {conversation.conversation_id}")
+    with col2:
+        if conversation.context.get('manuscript_id'):
+            st.caption(f"📄 {conversation.context['manuscript_id']}")
+    with col3:
+        if conversation.context.get('category'):
+            st.caption(f"🏷️ {conversation.context['category'].replace('_', ' ').title()}")
+    with col4:
+        urgency = conversation.context.get('urgency', 'unknown')
+        urgency_emoji = {'low': '🟢', 'medium': '🟡', 'high': '🔴'}.get(urgency, '⚪')
+        st.caption(f"{urgency_emoji} {urgency.title()}")
+    
+    # Escalation banner
+    if conversation.context['escalated']:
+        st.markdown(f"""
+        <div class="escalation-banner">
+            <strong>⚠️ ESCALATED TO HUMAN AGENT</strong><br>
+            <small>Reason: {conversation.context['escalation_reason']}</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Chat history display
+    chat_container = st.container()
+    
+    with chat_container:
+        if conversation.messages:
+            for msg in conversation.messages:
+                if msg['role'] == 'customer':
+                    st.markdown(f"""
+                    <div class="chat-message customer-message">
+                        <div class="message-header customer-header">👤 Customer</div>
+                        <div>{msg['content']}</div>
+                        {f"<small style='color: #666;'>{msg['timestamp']}</small>" if show_metadata else ""}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    metadata_html = ""
+                    if show_metadata and 'metadata' in msg:
+                        meta = msg['metadata']
+                        if 'confidence' in meta:
+                            metadata_html = f"<small style='color: #666;'>Confidence: {meta['confidence']:.0%} | Similar cases: {meta.get('similar_cases_count', 0)}</small>"
+                    
+                    st.markdown(f"""
+                    <div class="chat-message bot-message">
+                        <div class="message-header bot-header">🤖 Support Bot</div>
+                        <div>{msg['content']}</div>
+                        {metadata_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("👋 Welcome! How can I help you today?")
+    
+    st.divider()
+    
+    # Example queries (shown only at start of conversation)
+    if len(conversation.messages) == 0:
+        st.caption("💡 Try these example queries:")
+        example_cols = st.columns(3)
+        examples = [
+            "What's the status of my manuscript MS-2024-1234?",
+            "My review has been taking over 8 weeks",
+            "I need to submit revisions for MS-2024-5678"
+        ]
+        for idx, (col, example) in enumerate(zip(example_cols, examples)):
+            with col:
+                if st.button(example, key=f"example_{idx}", use_container_width=True):
+                    st.session_state.user_input = example
+                    st.rerun()
+    
+    # Input area
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        user_input = st.text_input(
+            "Type your message...",
+            key="user_input",
+            placeholder="Ask about manuscript status, delays, revisions...",
+            label_visibility="collapsed"
+        )
+    
+    with col2:
+        send_button = st.button("Send 📤", type="primary", use_container_width=True)
+    
+    # Process message
+    if send_button and user_input and user_input.strip():
+        with st.spinner("🤖 Processing..."):
+            result = st.session_state.orchestrator.process_message(
+                user_input,
+                conversation,
+                verbose=False
+            )
+        
+        # Clear input and rerun to show new messages
+        st.session_state.user_input = ""
+        st.rerun()
+    
+    # Agent actions panel (shown when escalated)
+    if conversation.context['escalated']:
+        with st.expander("🎯 Agent Actions & Context", expanded=True):
+            summary = conversation.get_escalation_summary()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Conversation Details:**")
+                st.write(f"• Messages: {summary['message_count']}")
+                st.write(f"• Category: {summary['category']}")
+                st.write(f"• Manuscript: {summary['manuscript_id']}")
+                st.write(f"• Started: {summary['created_at'][:19]}")
+            
+            with col2:
+                st.markdown("**Escalation Info:**")
+                st.write(f"• Reason: {summary['escalation_reason']}")
+                st.write(f"• Urgency: {summary['urgency']}")
+                st.write(f"• Last update: {summary['last_updated'][:19]}")
+            
+            st.divider()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("✅ Take Over Chat", use_container_width=True):
+                    st.success("Chat transferred to human agent")
+            with col2:
+                if st.button("🔄 Return to Bot", use_container_width=True):
+                    conversation.context['escalated'] = False
+                    st.rerun()
+            with col3:
+                if st.button("✓ Resolve & Close", use_container_width=True):
+                    del st.session_state.active_conversations[conversation.conversation_id]
+                    st.session_state.current_conv_id = None
+                    st.rerun()
+
+with tab2:
+    st.subheader("📊 System Analytics")
+    
+    if st.session_state.active_conversations:
+        all_convs = list(st.session_state.active_conversations.values())
+        
+        # Metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Category", result['triage']['category'].replace('_', ' ').title())
+            total_messages = sum(len(c.messages) for c in all_convs)
+            st.metric("Total Messages", total_messages)
         
         with col2:
-            urgency = result['triage']['urgency']
-            urgency_color = {"low": "🟢", "medium": "🟡", "high": "🔴"}
-            st.metric("Urgency", f"{urgency_color.get(urgency, '')} {urgency.title()}")
+            escalated_count = sum(1 for c in all_convs if c.context['escalated'])
+            st.metric("Escalated Chats", escalated_count)
         
         with col3:
-            confidence = result['confidence_score']
-            st.metric("Confidence", f"{confidence:.0%}")
+            high_urgency = sum(1 for c in all_convs if c.context.get('urgency') == 'high')
+            st.metric("High Urgency", high_urgency)
         
         with col4:
-            st.metric("Processing Time", f"{result['processing_time_seconds']:.2f}s")
+            avg_messages = total_messages / len(all_convs) if all_convs else 0
+            st.metric("Avg Messages/Chat", f"{avg_messages:.1f}")
         
         st.divider()
         
-        # Show detailed processing if enabled
-        if show_details:
-            with st.expander("🔍 Detailed Classification", expanded=True):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**Extracted Information:**")
-                    st.write(f"• Manuscript ID: `{result['triage'].get('manuscript_id', 'N/A')}`")
-                    st.write(f"• Issue Summary: {result['triage']['issue_summary']}")
-                
-                with col2:
-                    st.write("**Agent Analysis:**")
-                    st.write(f"• Similar cases found: {len(result['similar_cases'])}")
-                    st.write(f"• Should escalate: {'Yes ⚠️' if result['should_escalate'] else 'No ✅'}")
+        # Category breakdown
+        st.subheader("📁 Category Distribution")
+        categories = {}
+        for conv in all_convs:
+            cat = conv.context.get('category', 'Unknown')
+            categories[cat] = categories.get(cat, 0) + 1
         
-        # Show similar cases if enabled
-        if show_kb_results and result['similar_cases']:
-            with st.expander("📚 Similar Past Cases", expanded=False):
-                for idx, case in enumerate(result['similar_cases'], 1):
-                    st.write(f"**Case {idx}: {case['id']}** (Relevance: {case['relevance_score']:.0%})")
-                    st.write(f"*Query:* {case['query']}")
-                    st.write(f"*Resolution:* {case['resolution']}")
-                    st.divider()
-        
-        # Generated response
-        st.subheader("📝 Generated Response")
-        
-        if result['should_escalate']:
-            st.warning("⚠️ **Recommendation:** This query should be escalated to a human agent for review.")
-        
-        st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 1.5rem; border-radius: 0.5rem; border-left: 4px solid #1f77b4;">
-        {result['response']}
-        </div>
-        """, unsafe_allow_html=True)
-        
-    elif process_button:
-        st.warning("⚠️ Please enter a customer query.")
-
-with tab2:
-    st.subheader("Query History")
-    
-    if st.session_state.history:
-        st.write(f"Total queries processed: **{len(st.session_state.history)}**")
-        
-        # Summary statistics
-        avg_confidence = sum(h['confidence_score'] for h in st.session_state.history) / len(st.session_state.history)
-        escalations = sum(1 for h in st.session_state.history if h['should_escalate'])
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Average Confidence", f"{avg_confidence:.0%}")
-        with col2:
-            st.metric("Total Escalations", escalations)
-        with col3:
-            st.metric("Success Rate", f"{(1 - escalations/len(st.session_state.history)):.0%}")
+        if categories:
+            import pandas as pd
+            cat_df = pd.DataFrame(list(categories.items()), columns=['Category', 'Count'])
+            cat_df['Category'] = cat_df['Category'].str.replace('_', ' ').str.title()
+            st.bar_chart(cat_df.set_index('Category'))
         
         st.divider()
         
-        # Display history in reverse order (newest first)
-        for idx, item in enumerate(reversed(st.session_state.history), 1):
-            with st.expander(f"Query {len(st.session_state.history) - idx + 1}: {item['query'][:60]}..."):
-                st.write(f"**Category:** {item['triage']['category']}")
-                st.write(f"**Urgency:** {item['triage']['urgency']}")
-                st.write(f"**Confidence:** {item['confidence_score']:.0%}")
-                st.write(f"**Manuscript ID:** {item['triage'].get('manuscript_id', 'N/A')}")
-                st.divider()
-                st.write("**Response:**")
-                st.write(item['response'])
+        # Recent conversations
+        st.subheader("🕐 Recent Activity")
+        for conv in sorted(all_convs, key=lambda x: x.last_updated, reverse=True)[:5]:
+            with st.expander(f"{conv.conversation_id} - {len(conv.messages)//2} exchanges"):
+                st.write(f"**Status:** {'⚠️ Escalated' if conv.context['escalated'] else '✅ Active'}")
+                st.write(f"**Category:** {conv.context.get('category', 'N/A')}")
+                st.write(f"**Manuscript:** {conv.context.get('manuscript_id', 'N/A')}")
+                st.write(f"**Last updated:** {conv.last_updated.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
-        st.info("No queries processed yet. Go to the Query Processor tab to get started!")
-
-with tab3:
-    st.subheader("About This System")
-    
-    st.markdown("""
-    ### 🎯 Overview
-    This is a **Multi-Agent AI System** for automating customer service responses in academic publishing workflows.
-    
-    ### 🏗️ Architecture
-    The system uses three specialized AI agents:
-    
-    1. **🎯 Triage Agent**
-       - Classifies incoming queries into categories
-       - Extracts key information (manuscript ID, urgency)
-       - Determines priority level
-    
-    2. **📚 Knowledge Base Agent**
-       - Searches through historical resolved cases
-       - Finds similar past queries and solutions
-       - Ranks results by relevance
-    
-    3. **✍️ Response Generator Agent**
-       - Creates personalized, empathetic responses
-       - Adapts tone based on urgency
-       - Incorporates solutions from similar cases
-    
-    ### 🔧 Technology Stack
-    - **LLM:** Anthropic Claude Sonnet 4.5
-    - **Framework:** Streamlit
-    - **Data:** Synthetic OSVC-style customer service data
-    - **Language:** Python 3.9+
-    
-    ### 📊 Use Case
-    Handles manuscript status inquiries including:
-    - Status updates
-    - Review delays
-    - Decision timelines
-    - Revision submissions
-    - Withdrawal requests
-    
-    ### 👤 Built by
-    Ravi - Senior Data Scientist specializing in AI automation for customer experience analytics
-    """)
-    
-    st.divider()
-    
-    st.subheader("📈 Knowledge Base Statistics")
-    kb_stats = stats['knowledge_base']
-    
-    if kb_stats['total_cases'] > 0:
-        # Category distribution
-        st.write("**Category Distribution:**")
-        cat_df = pd.DataFrame(
-            list(kb_stats['categories'].items()),
-            columns=['Category', 'Count']
-        )
-        cat_df['Category'] = cat_df['Category'].str.replace('_', ' ').str.title()
-        st.bar_chart(cat_df.set_index('Category'))
+        st.info("No conversation data yet. Start chatting to see analytics!")
 
 # Footer
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1rem;">
-    <small>AI Customer Service Agent System v1.0 | Powered by Claude Sonnet 4.5</small>
+    <small>AI Customer Service Chatbot v2.0 | Powered by Claude Sonnet 4.5 + OpenAI Embeddings</small>
 </div>
 """, unsafe_allow_html=True)
