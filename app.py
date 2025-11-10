@@ -230,7 +230,12 @@ with tab1:
         for idx, (col, example) in enumerate(zip(example_cols, examples)):
             with col:
                 if st.button(example, key=f"example_{idx}", use_container_width=True):
-                    st.session_state.user_input = example
+                    with st.spinner("🤖 Processing..."):
+                        result = st.session_state.orchestrator.process_message(
+                            example,
+                            conversation,
+                            verbose=False
+                        )
                     st.rerun()
     
     # Input area
@@ -239,7 +244,7 @@ with tab1:
     with col1:
         user_input = st.text_input(
             "Type your message...",
-            key="user_input",
+            key=f"input_{conversation.conversation_id}",
             placeholder="Ask about manuscript status, delays, revisions...",
             label_visibility="collapsed"
         )
@@ -255,9 +260,6 @@ with tab1:
                 conversation,
                 verbose=False
             )
-        
-        # Clear input and rerun to show new messages
-        st.session_state.user_input = ""
         st.rerun()
     
     # Agent actions panel (shown when escalated)
@@ -283,14 +285,14 @@ with tab1:
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("✅ Take Over Chat", use_container_width=True):
+                if st.button("✅ Take Over Chat", key="takeover", use_container_width=True):
                     st.success("Chat transferred to human agent")
             with col2:
-                if st.button("🔄 Return to Bot", use_container_width=True):
+                if st.button("🔄 Return to Bot", key="return", use_container_width=True):
                     conversation.context['escalated'] = False
                     st.rerun()
             with col3:
-                if st.button("✓ Resolve & Close", use_container_width=True):
+                if st.button("✓ Resolve & Close", key="resolve", use_container_width=True):
                     del st.session_state.active_conversations[conversation.conversation_id]
                     st.session_state.current_conv_id = None
                     st.rerun()
