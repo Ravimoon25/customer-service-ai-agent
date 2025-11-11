@@ -53,6 +53,13 @@ st.markdown("""
         margin: 1rem 0;
         border-radius: 0.5rem;
     }
+    .closed-banner {
+        background-color: #f8d7da;
+        border-left: 4px solid #dc3545;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.5rem;
+    }
     .metric-card {
         background-color: #f8f9fa;
         padding: 1rem;
@@ -88,6 +95,8 @@ with st.sidebar:
     
     if st.session_state.active_conversations:
         for conv_id, conv in st.session_state.active_conversations.items():
+            # Icons for status
+            closed_icon = "🔒" if conv.context.get('closed', False) else ""
             escalation_icon = "⚠️" if conv.context['escalated'] else ""
             urgency = conv.context.get('urgency')
             urgency_color = {
@@ -99,7 +108,7 @@ with st.sidebar:
             col1, col2 = st.columns([3, 1])
             with col1:
                 if st.button(
-                    f"{escalation_icon} {urgency_color} {conv_id}", 
+                    f"{closed_icon} {escalation_icon} {urgency_color} {conv_id}", 
                     key=f"conv_{conv_id}",
                     use_container_width=True
                 ):
@@ -112,8 +121,12 @@ with st.sidebar:
         
         # Show escalated conversations
         escalated = [c for c in st.session_state.active_conversations.values() if c.context['escalated']]
+        closed = [c for c in st.session_state.active_conversations.values() if c.context.get('closed', False)]
+        
         if escalated:
             st.warning(f"⚠️ {len(escalated)} chat(s) need attention")
+        if closed:
+            st.info(f"🔒 {len(closed)} conversation(s) closed")
     else:
         st.info("No active conversations")
     
@@ -174,8 +187,58 @@ with tab1:
         else:
             st.caption("⚪ Unknown")
     
-    # Escalation banner
-    if conversation.context['escalated']:
+    # Check if conversation is closed
+    if conversation.context.get('closed', False):
+        st.markdown(f"""
+        <div class="closed-banner">
+            <strong>🔒 THIS CONVERSATION HAS BEEN CLOSED</strong><br>
+            <small>This conversation has ended. Please start a new conversation for additional questions.</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("➕ Start New Conversation", type="primary", use_container_width=True, key="new_conv_closed"):
+                new_conv = st.session_state.orchestrator.create_conversation()
+                st.session_state.active_conversations[new_conv.conversation_id] = new_conv
+                st.session_state.current_conv_id = new_conv.conversation_id
+                st.rerun()
+        
+        # Show chat history but disable input
+        st.divider()
+        
+        chat_container = st.container()
+        
+        with chat_container:
+            if conversation.messages:
+                for msg in conversation.messages:
+                    if msg['role'] == 'customer':
+                        st.markdown(f"""
+                        <div class="chat-message customer-message">
+                            <div class="message-header customer-header">👤 Customer</div>
+                            <div>{msg['content']}</div>
+                            {f"<small style='color: #666;'>{msg['timestamp']}</small>" if show_metadata else ""}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        metadata_html = ""
+                        if show_metadata and 'metadata' in msg:
+                            meta = msg['metadata']
+                            if 'confidence' in meta:
+                                metadata_html = f"<small style='color: #666;'>Confidence: {meta['confidence']:.0%}</small>"
+                        
+                        st.markdown(f"""
+                        <div class="chat-message bot-message">
+                            <div class="message-header bot-header">🤖 Support Bot</div>
+                            <div>{msg['content']}</div>
+                            {metadata_html}
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        st.stop()  # Prevent further interaction with closed conversation
+    
+    # Escalation banner (for open conversations)
+    if conversation.context['escalated'] and not conversation.context.get('closed', False):
         st.markdown(f"""
         <div class="escalation-banner">
             <strong>⚠️ ESCALATED TO HUMAN AGENT</strong><br>
@@ -224,8 +287,8 @@ with tab1:
         example_cols = st.columns(3)
         examples = [
             "What's the status of my manuscript MS-2024-1234?",
-            "My review has been taking over 8 weeks",
-            "I need to submit revisions for MS-2024-5678"
+            "My review for MS-2024-8903 has been taking over 8 weeks",
+            "I need to submit revisions for MS-2024-1005"
         ]
         for idx, (col, example) in enumerate(zip(example_cols, examples)):
             with col:
@@ -263,7 +326,7 @@ with tab1:
         st.rerun()
     
     # Agent actions panel (shown when escalated)
-    if conversation.context['escalated']:
+    if conversation.context['escalated'] and not conversation.context.get('closed', False):
         with st.expander("🎯 Agent Actions & Context", expanded=True):
             summary = conversation.get_escalation_summary()
             
@@ -293,8 +356,7 @@ with tab1:
                     st.rerun()
             with col3:
                 if st.button("✓ Resolve & Close", key="resolve", use_container_width=True):
-                    del st.session_state.active_conversations[conversation.conversation_id]
-                    st.session_state.current_conv_id = None
+                    conversation.context['closed'] = True
                     st.rerun()
 
 with tab2:
@@ -315,8 +377,8 @@ with tab2:
             st.metric("Escalated Chats", escalated_count)
         
         with col3:
-            high_urgency = sum(1 for c in all_convs if c.context.get('urgency') == 'high')
-            st.metric("High Urgency", high_urgency)
+            closed_count = sum(1 for c in all_convs if c.context.get('closed', False))
+            st.metric("Closed Chats", closed_count)
         
         with col4:
             avg_messages = total_messages / len(all_convs) if all_convs else 0
@@ -342,11 +404,16 @@ with tab2:
         # Recent conversations
         st.subheader("🕐 Recent Activity")
         for conv in sorted(all_convs, key=lambda x: x.last_updated, reverse=True)[:5]:
-            with st.expander(f"{conv.conversation_id} - {len(conv.messages)//2} exchanges"):
-                st.write(f"**Status:** {'⚠️ Escalated' if conv.context['escalated'] else '✅ Active'}")
+            status_text = "🔒 Closed" if conv.context.get('closed', False) else ('⚠️ Escalated' if conv.context['escalated'] else '✅ Active')
+            
+            with st.expander(f"{conv.conversation_id} - {len(conv.messages)//2} exchanges - {status_text}"):
+                st.write(f"**Status:** {status_text}")
                 st.write(f"**Category:** {conv.context.get('category', 'N/A')}")
                 st.write(f"**Manuscript:** {conv.context.get('manuscript_id', 'N/A')}")
                 st.write(f"**Last updated:** {conv.last_updated.strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                if conv.context.get('closed', False):
+                    st.write(f"**Closed:** Yes")
     else:
         st.info("No conversation data yet. Start chatting to see analytics!")
 
