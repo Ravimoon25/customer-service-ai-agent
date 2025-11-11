@@ -1,9 +1,21 @@
 manuscript_id,author_name,submission_date,current_status,reviewer_count,decision_date,notes
 MS-2024-1234,Dr. John Smith,2024-09-15,Under Review,2,2024-11-20,Reviews due Nov 20
-MS-2024-2156,Dr. Sarah Johnson,2024-08-10,Decision Pending,2,2024-11-12,Editor reviewing
+MS-2024-2156,Dr. Sarah Johnson,2024-08-10,Decision Pending,2,2024-11-12,Editor reviewing feedback
 MS-2024-3401,Prof. Michael Chen,2024-09-01,With Editor,2,2024-11-15,Minor revisions likely
-MS-2024-4501,Dr. Emily Brown,2024-10-01,Accepted,2,2024-10-25,In production
-MS-2024-5602,Dr. James Wilson,2024-10-01,Initial Screening,0,,Checking format
-MS-2024-6701,Dr. Lisa Davis,2024-08-15,Under Review,1,,Reviewer replacement
-MS-2024-7802,Prof. Robert Lee,2024-07-20,Decision Pending,2,2024-11-11,48 hours
-MS-2024-8903,Dr. Maria Garcia,2024-06-15,Under Review,1,,Escalated to EIC
+MS-2024-4501,Dr. Emily Brown,2024-10-01,Accepted,2,2024-10-25,In production stage
+MS-2024-5602,Dr. James Wilson,2024-10-01,Initial Screening,0,,Checking format compliance
+MS-2024-6701,Dr. Lisa Davis,2024-08-15,Under Review,1,,Reviewer replacement needed
+MS-2024-7802,Prof. Robert Lee,2024-07-20,Decision Pending,2,2024-11-11,Decision within 48 hours
+MS-2024-8903,Dr. Maria Garcia,2024-06-15,Under Review,1,,Escalated to Editor-in-Chief
+MS-2024-9104,Dr. David Martinez,2024-09-20,Under Review,2,2024-11-20,Reviewer reminders sent
+MS-2024-1005,Dr. Jennifer Taylor,2024-08-05,Revise and Resubmit,2,2024-12-14,Major revisions - 60 days
+MS-2024-1106,Prof. William Anderson,2024-09-10,Revision Under Review,2,2024-11-22,Re-review in progress
+MS-2024-1207,Dr. Elizabeth Thomas,2024-10-10,Under Review,2,2024-11-24,Standard timeline
+MS-2024-1308,Dr. Christopher Moore,2024-07-30,Revise and Resubmit,2,2024-11-30,Minor revisions - 30 days
+MS-2024-1409,Dr. Jessica Jackson,2024-08-18,Awaiting Revisions,2,2024-11-17,Revision deadline approaching
+MS-2024-1510,Prof. Daniel White,2024-09-25,Awaiting Revisions,2,2024-12-08,Extension granted
+MS-2024-1611,Dr. Amanda Harris,2024-10-05,Revision Submitted,2,2024-11-18,Re-review scheduled
+MS-2024-1712,Dr. Matthew Martin,2024-07-25,Awaiting Revisions,2,2024-11-25,Both versions required
+MS-2024-1813,Dr. Ashley Thompson,2024-08-22,Withdrawn,2,,Author request processed
+MS-2024-1914,Prof. Joshua Garcia,2024-09-12,Active,2,2024-11-30,Can withdraw if needed
+MS-2024-2015,Dr. Nicole Martinez,2024-10-08,Under Review,2,,Co-author dispute flagged
