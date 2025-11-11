@@ -1,0 +1,9 @@
+manuscript_id,author_name,submission_date,current_status,reviewer_count,decision_date,notes
+MS-2024-1234,Dr. John Smith,2024-09-15,Under Review,2,2024-11-20,Reviews due Nov 20
+MS-2024-2156,Dr. Sarah Johnson,2024-08-10,Decision Pending,2,2024-11-12,Editor reviewing
+MS-2024-3401,Prof. Michael Chen,2024-09-01,With Editor,2,2024-11-15,Minor revisions likely
+MS-2024-4501,Dr. Emily Brown,2024-10-01,Accepted,2,2024-10-25,In production
+MS-2024-5602,Dr. James Wilson,2024-10-01,Initial Screening,0,,Checking format
+MS-2024-6701,Dr. Lisa Davis,2024-08-15,Under Review,1,,Reviewer replacement
+MS-2024-7802,Prof. Robert Lee,2024-07-20,Decision Pending,2,2024-11-11,48 hours
+MS-2024-8903,Dr. Maria Garcia,2024-06-15,Under Review,1,,Escalated to EIC
