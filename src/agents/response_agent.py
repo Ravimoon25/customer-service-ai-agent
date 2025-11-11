@@ -118,6 +118,90 @@ Generate a helpful, empathetic response to this customer based on the context ab
         
         return response, confidence, should_escalate
     
+    def generate_with_real_data(self, customer_query, manuscript_info, triage_result, 
+                               kb_results, conversation_context):
+        """
+        Generate response using REAL manuscript data (no hallucination)
+        
+        Args:
+            customer_query: Customer's question
+            manuscript_info: Formatted string with real manuscript data
+            triage_result: Classification from triage
+            kb_results: Similar cases from KB
+            conversation_context: Conversation history string
+        
+        Returns:
+            Tuple of (response_text, confidence_score, should_escalate)
+        """
+        # Build KB context
+        kb_context = self._format_kb_context(kb_results)
+        
+        system_prompt = f"""You are a professional customer service agent for an academic journal.
+    
+    CRITICAL RULE: You have access to REAL manuscript data below. Use ONLY this information.
+    DO NOT make up statuses, dates, or details. If information is missing, say so honestly.
+    
+    Your tone should be:
+    - Empathetic and understanding
+    - Professional but warm  
+    - Clear and specific
+    - Based ONLY on the provided data
+    
+    Guidelines:
+    - Answer based on the REAL manuscript data provided
+    - Reference similar cases for additional context
+    - If data is incomplete, acknowledge it
+    - Provide actionable next steps
+    - Keep response concise (2-3 paragraphs)
+    
+    DO NOT:
+    - Invent information not in the data
+    - Make up reviewer names, dates, or decisions
+    - Promise things not supported by the data
+    """
+    
+        user_prompt = f"""Customer Query: {customer_query}
+    
+    {manuscript_info}
+    
+    Conversation Context:
+    {conversation_context}
+    
+    Classification:
+    - Category: {triage_result.get('category', 'N/A')}
+    - Urgency: {triage_result.get('urgency', 'medium')}
+    
+    {kb_context}
+    
+    Generate a helpful response based ONLY on the real manuscript data provided above."""
+    
+        response = call_claude(user_prompt, system_prompt, temperature=0.3)
+        
+        # Calculate confidence
+        confidence = self._calculate_confidence_with_data(triage_result, kb_results, manuscript_info)
+        
+        # Escalation logic
+        should_escalate = (
+            confidence < Config.ESCALATION_THRESHOLD or
+            triage_result.get('urgency') == 'high'
+        )
+        
+        return response, confidence, should_escalate
+
+    def _calculate_confidence_with_data(self, triage_result, kb_results, manuscript_info):
+        """Calculate confidence when we have real data"""
+        confidence = 0.7  # Higher base because we have real data
+        
+        # Increase if we found similar cases
+        if kb_results and len(kb_results) > 0:
+            confidence += 0.15
+        
+        # Increase if category is clear
+        if triage_result.get('category') in Config.CATEGORIES:
+            confidence += 0.15
+        
+        return min(confidence, 1.0)
+    
     def _calculate_confidence(self, triage_result, kb_results):
         """
         Calculate confidence score for the response
